@@ -1,36 +1,25 @@
-import os
-import platform
-import socket
-import json
+import os, platform, socket, json
 
-test_dict = {"criteria_1" : 2, "criteria_2" : 3}
+data_dict = {
+    "system" : platform.system(), 
+    "node" : platform.node(),
+    "SYSrelease" : platform.release(),
+    "SYSversion" : platform.version(),
+    "platform" : platform.platform(),
+    "CPU" : platform.processor(),
+    "SYScountCPU" : os.cpu_count(),
+    "machine" : platform.machine(),
+    "userSYSlogin" : os.getlogin(),
+    "has_dualstack_ipv6" : socket.has_dualstack_ipv6(),
+    }
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
-    json.dump(test_dict, write_file)
+    json.dump(data_dict, write_file)
 
-
-print(platform.system())
-print(platform.machine())
-print(platform.node())
-print(platform.platform())
-print(platform.processor())
-print(platform.release())
-print(platform.version())
-print(platform.uname())
-
-print(os.getlogin())
-print(os.cpu_count())
-
-print(socket.if_nameindex())
-print(socket.has_dualstack_ipv6())
-print(socket.gethostname())
-print(socket.gethostbyname(socket.gethostname()))
+## print(socket.if_nameindex())
 
 ## for windows
 print(platform.win32_ver(release='', version='', csd='', ptype=''))
 print(platform.win32_edition())
 print(platform.win32_is_iot())
-
-##for linux 
-print(platform.freedesktop_os_release())
 

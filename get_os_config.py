@@ -1,6 +1,13 @@
 import os
 import platform
 import socket
+import json
+
+test_dict = {"criteria_1" : 2, "criteria_2" : 3}
+
+with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
+    json.dump(test_dict, write_file)
+
 
 print(platform.system())
 print(platform.machine())

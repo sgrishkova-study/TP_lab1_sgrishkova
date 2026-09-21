@@ -1,5 +1,5 @@
-import platform
 import os
+import platform
 import socket
 
 print(platform.system())

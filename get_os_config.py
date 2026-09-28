@@ -18,13 +18,11 @@ if data_dict['system'] == 'Linux':
     for password in pwd.getpwall():
         data_dict.update({"password_path_" + str(password.pw_name) : [password.pw_uid, password.pw_gid, password.pw_dir, password.pw_shell ]})
 
-
-## print(socket.if_nameindex())
-
-## for windows
-##print(platform.win32_ver(release='', version='', csd='', ptype=''))
-##print(platform.win32_edition())
-##print(platform.win32_is_iot())
+if data_dict['system'] == 'Windows':
+    data_dict.update({"windows?": "yes" })
+    data_dict.update({"windows_version" : platform.win32_ver(release='', version='', csd='', ptype='')})
+    data_dict.update({"windows_edition" : platform.win32_edition()})
+    data_dict.update({"windows_is_iot" : platform.win32_is_iot()})
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
     json.dump(data_dict, write_file)

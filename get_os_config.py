@@ -22,17 +22,12 @@ data_dict = {
     }
 
 if (data_dict['system'] == 'Linux'):
-    import pwd
-
-    for password in pwd.getpwall():
-        data_dict.update({"password_path_" + str(password.pw_name) : [password.pw_uid, password.pw_gid, password.pw_dir, password.pw_shell ]})
-    
     mem = read_text("/proc/meminfo")
     for line in mem.splitlines():
         if ":" not in line: continue
         key, value = line.split(":", 1)
         fields = value.split()
-        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })
+        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })       
 
 if data_dict['system'] == 'Windows':
     data_dict.update({"windows?": "yes" })

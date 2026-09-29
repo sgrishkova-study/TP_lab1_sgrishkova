@@ -10,14 +10,13 @@ def read_text(path):
 
 data_dict = {
     "system" : platform.system(), 
-    "node" : platform.node(),
+    "system_node" : platform.node(),
     "system_release" : platform.release(),
     "system_version" : platform.version(),
-    "platform" : platform.platform(),
-    "machine" : platform.machine(),
-    "user" : os.getlogin(),
-    "has_dualstack_ipv6" : socket.has_dualstack_ipv6(),
-    "byteorder" : sys.byteorder,
+    "system_platform" : platform.platform(),
+    "system_machine" : platform.machine(),
+    "system_user" : os.getlogin(),
+    "system_byteorder" : sys.byteorder,
     "CPU" : platform.processor(),
     "CPU_count" : os.cpu_count(),
     }
@@ -53,7 +52,7 @@ if (data_dict['system'] == 'Linux'):
         if ":" not in line: continue
         key, value = line.split(":", 1)
         fields = value.split()
-        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })
+        data_dict.update({"memory_" + key + "_in_bytes" : (int(fields[0]) * 1024) })
 
     interfaces = {}
     net_dir = Path("/sys/class/net")
@@ -77,8 +76,18 @@ if (data_dict['system'] == 'Linux'):
     except OSError:
         pass
 
-    
-    
+    processes = []
+    proc_dir = Path("/proc")
+    try:
+        for entry in proc_dir.iterdir():
+            if entry.name.isdigit():
+                name = read_text(entry / "comm")
+                if name:
+                    processes.append(name.strip())
+        
+    except OSError:
+        pass
+
 
 if data_dict['system'] == 'Windows':
     data_dict.update({"windows?": "yes" })

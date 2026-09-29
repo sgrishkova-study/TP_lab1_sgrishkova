@@ -1,5 +1,11 @@
-import os, platform, socket, json, pwd
+import os, platform, socket, json, sys
+from pathlib import Path
 
+def read_text(path):
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
 
 data_dict = {
     "system" : platform.system(), 
@@ -8,15 +14,25 @@ data_dict = {
     "system_version" : platform.version(),
     "platform" : platform.platform(),
     "CPU" : platform.processor(),
-    "system_count_CPU" : os.cpu_count(),
+    "CPU_count" : os.cpu_count(),
     "machine" : platform.machine(),
     "user" : os.getlogin(),
     "has_dualstack_ipv6" : socket.has_dualstack_ipv6(),
+    "byteorder" : sys.byteorder,
     }
 
-if data_dict['system'] == 'Linux':
+if (data_dict['system'] == 'Linux'):
+    import pwd
+
     for password in pwd.getpwall():
         data_dict.update({"password_path_" + str(password.pw_name) : [password.pw_uid, password.pw_gid, password.pw_dir, password.pw_shell ]})
+    
+    mem = read_text("/proc/meminfo")
+    for line in mem.splitlines():
+        if ":" not in line: continue
+        key, value = line.split(":", 1)
+        fields = value.split()
+        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })
 
 if data_dict['system'] == 'Windows':
     data_dict.update({"windows?": "yes" })

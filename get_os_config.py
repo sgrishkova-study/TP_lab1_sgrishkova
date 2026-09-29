@@ -1,6 +1,9 @@
-from genericpath import exists
-import os, platform, socket, json, sys
+import json
+import os
+import platform
+import sys
 from pathlib import Path
+
 
 def read_text(path):
     try:
@@ -76,18 +79,28 @@ if (data_dict['system'] == 'Linux'):
     except OSError:
         pass
 
-    processes = []
+    processes = {}
     proc_dir = Path("/proc")
     try:
         for entry in proc_dir.iterdir():
             if entry.name.isdigit():
+                proc_id = int(entry.name)
                 name = read_text(entry / "comm")
                 if name:
-                    processes.append(name.strip())
-        
+                    processes[proc_id] = {}
+                    processes[proc_id].update({"proc_name" : name.strip()})
+                
+                    status = read_text(entry / "status")
+                    for line in status.splitlines():
+                        if line.startswith("State"):
+                            processes[proc_id].update({"proc_state" : line.split(":", 1)[1].strip()})
+                            break 
     except OSError:
         pass
 
+    data_dict.update(processes)
+    
+    
 
 if data_dict['system'] == 'Windows':
     data_dict.update({"windows?": "yes" })

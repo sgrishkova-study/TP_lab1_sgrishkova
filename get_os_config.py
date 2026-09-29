@@ -1,3 +1,4 @@
+from genericpath import exists
 import os, platform, socket, json, sys
 from pathlib import Path
 
@@ -56,12 +57,20 @@ if (data_dict['system'] == 'Linux'):
 
     interfaces = {}
     net_dir = Path("/sys/class/net")
+
     try:
         for interface_dir in sorted(net_dir.iterdir()):
             name = interface_dir.name
             interfaces[name] = {}
-            for interface in sorted(interface_dir.iterdir()):
-                interfaces[name].update({interface.name : read_text(interface)})
+
+            for folder in interface_dir.iterdir():
+                if folder.is_dir() and (folder.name == "device"):
+                    for file in folder.iterdir():
+                        if file.is_file():
+                            interfaces[name].update({ name + "_interface_" + folder.name + "_" + file.name : read_text(file)})
+                
+                if folder.is_file():
+                    interfaces[name].update({name + "_interface_" + folder.name : read_text(folder)})
         
         data_dict.update({"net_interfaces" : interfaces})
         

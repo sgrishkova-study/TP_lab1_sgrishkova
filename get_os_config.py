@@ -2,14 +2,32 @@ import json
 import os
 import platform
 import sys
+import winreg
+import ctypes
 from pathlib import Path
-
 
 def read_text(path):
     try:
         return Path(path).read_text(encoding="utf-8", errors="replace")
     except (OSError, ValueError):
         return None
+
+def read_registry_values(path, hive=winreg.HKEY_LOCAL_MACHINE, access=0):
+    result = {}
+
+    try:
+        with winreg.OpenKey(hive, path, 0, winreg.KEY_READ | access) as key:
+            index = 0
+            while True:
+                try:
+                    name, value, _kind = winreg.EnumValue(key, index)
+                    result[name] = value
+                    index += 1
+                except OSError:
+                    break
+    except OSError:
+        pass
+    return result
 
 data_dict = {
     "system" : platform.system(), 
@@ -103,10 +121,89 @@ if (data_dict['system'] == 'Linux'):
     
 
 if data_dict['system'] == 'Windows':
-    data_dict.update({"windows?": "yes" })
     data_dict.update({"windows_version" : platform.win32_ver(release='', version='', csd='', ptype='')})
     data_dict.update({"windows_edition" : platform.win32_edition()})
     data_dict.update({"windows_is_iot" : platform.win32_is_iot()})
+
+    bios = read_registry_values(r"HARDWARE\DESCRIPTION\System\BIOS")
+    wanted_bios_fields = (
+        "SystemManufacturer",
+        "SystemProductName",
+        "SystemFamily",
+        "BIOSVendor",
+        "BIOSVersion",
+        "BIOSReleaseDate",
+    )
+    data_dict["system_firmware"] = {
+        name: bios[name] for name in wanted_bios_fields if name in bios
+    }
+
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", ctypes.c_ulong),
+            ("dwMemoryLoad", ctypes.c_ulong),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    try:
+        memory = MEMORYSTATUSEX()
+        memory.dwLength = ctypes.sizeof(memory)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
+            data_dict["memory"] = {
+                "total_bytes": memory.ullTotalPhys,
+                "available_bytes": memory.ullAvailPhys,
+                "memory_load_percent": memory.dwMemoryLoad,
+            }
+    except (AttributeError, OSError):
+        pass
+
+    results = {}
+    uninstall_paths = [
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    ]
+
+    for path in uninstall_paths:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as root:
+                index = 0
+
+                while True:
+                    try:
+                        subkey_name = winreg.EnumKey(root, index)
+                        index += 1
+                    except OSError:
+                        break
+
+                    try:
+                        with winreg.OpenKey(root, subkey_name) as app_key:
+                            app = {}
+                            for field in (
+                                "DisplayName",
+                                "DisplayVersion",
+                                "Publisher",
+                                "InstallDate",
+                                "EstimatedSize",
+                            ):
+                                try:
+                                    app[field] = winreg.QueryValueEx(app_key, field)[0]
+                                except OSError:
+                                    pass
+                            
+                            if app.get("DisplayName"):
+                                results[app.get("DisplayName")] = app
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+
+    data_dict["apps"] = results
 
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:

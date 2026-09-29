@@ -13,21 +13,47 @@ data_dict = {
     "system_release" : platform.release(),
     "system_version" : platform.version(),
     "platform" : platform.platform(),
-    "CPU" : platform.processor(),
-    "CPU_count" : os.cpu_count(),
     "machine" : platform.machine(),
     "user" : os.getlogin(),
     "has_dualstack_ipv6" : socket.has_dualstack_ipv6(),
     "byteorder" : sys.byteorder,
+    "CPU" : platform.processor(),
+    "CPU_count" : os.cpu_count(),
     }
 
 if (data_dict['system'] == 'Linux'):
+    cpu = read_text("/proc/cpuinfo")
+    for line in cpu.splitlines():
+        if line.startswith("vendor_id"):
+            data_dict.update({"CPU_vendor_id": line.split(":", 1)[1].strip()})
+            continue
+        
+        if line.startswith("model name"):
+            data_dict.update({"CPU_model_name": line.split(":", 1)[1].strip()})
+            continue
+
+        if line.startswith("cache size"):
+            data_dict.update({"CPU_cache_size_in_bytes": int(line.split(":", 1)[1].strip().split()[0]) * 1024})
+            continue
+        
+        if line.startswith("flags"):
+            data_dict.update({"CPU_flags": line.split(":", 1)[1].strip()})
+            continue
+
+        if line.startswith("bugs"):
+            data_dict.update({"CPU_bugs": line.split(":", 1)[1].strip()})
+            continue
+
+        if line.startswith("power managment"):
+            break
+
     mem = read_text("/proc/meminfo")
     for line in mem.splitlines():
         if ":" not in line: continue
         key, value = line.split(":", 1)
         fields = value.split()
-        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })       
+        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })     
+        
 
 if data_dict['system'] == 'Windows':
     data_dict.update({"windows?": "yes" })

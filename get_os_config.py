@@ -163,6 +163,48 @@ if data_dict['system'] == 'Windows':
     except (AttributeError, OSError):
         pass
 
+    results = {}
+    uninstall_paths = [
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    ]
+
+    for path in uninstall_paths:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as root:
+                index = 0
+
+                while True:
+                    try:
+                        subkey_name = winreg.EnumKey(root, index)
+                        index += 1
+                    except OSError:
+                        break
+
+                    try:
+                        with winreg.OpenKey(root, subkey_name) as app_key:
+                            app = {}
+                            for field in (
+                                "DisplayName",
+                                "DisplayVersion",
+                                "Publisher",
+                                "InstallDate",
+                                "EstimatedSize",
+                            ):
+                                try:
+                                    app[field] = winreg.QueryValueEx(app_key, field)[0]
+                                except OSError:
+                                    pass
+                            
+                            if app.get("DisplayName"):
+                                results[app.get("DisplayName")] = app
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+
+    data_dict["apps"] = results
+
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
     json.dump(data_dict, write_file)

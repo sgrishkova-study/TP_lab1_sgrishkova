@@ -52,14 +52,32 @@ if (data_dict['system'] == 'Linux'):
         if ":" not in line: continue
         key, value = line.split(":", 1)
         fields = value.split()
-        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })     
+        data_dict.update({key + "_in_bytes" : (int(fields[0]) * 1024) })
+
+    interfaces = {}
+    net_dir = Path("/sys/class/net")
+    try:
+        for interface_dir in sorted(net_dir.iterdir()):
+            name = interface_dir.name
+            interfaces[name] = {}
+            for interface in sorted(interface_dir.iterdir()):
+                while(interface)
+                interfaces[name].update({interface.name : read_text(interface)})
         
+        data_dict.update({"net_interfaces" : interfaces})
+        
+    except OSError:
+        pass
+
+    
+    
 
 if data_dict['system'] == 'Windows':
     data_dict.update({"windows?": "yes" })
     data_dict.update({"windows_version" : platform.win32_ver(release='', version='', csd='', ptype='')})
     data_dict.update({"windows_edition" : platform.win32_edition()})
     data_dict.update({"windows_is_iot" : platform.win32_is_iot()})
+
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
     json.dump(data_dict, write_file)

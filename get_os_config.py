@@ -61,7 +61,6 @@ if (data_dict['system'] == 'Linux'):
             name = interface_dir.name
             interfaces[name] = {}
             for interface in sorted(interface_dir.iterdir()):
-                while(interface)
                 interfaces[name].update({interface.name : read_text(interface)})
         
         data_dict.update({"net_interfaces" : interfaces})

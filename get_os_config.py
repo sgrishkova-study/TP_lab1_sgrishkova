@@ -2,17 +2,15 @@ import json
 import os
 import platform
 import sys
-import winreg
-import ctypes
 from pathlib import Path
 
 def read_text(path):
     try:
         return Path(path).read_text(encoding="utf-8", errors="replace")
     except (OSError, ValueError):
-        return None
+        return ""
 
-def read_registry_values(path, hive=winreg.HKEY_LOCAL_MACHINE, access=0):
+def read_registry_values(winreg, path, hive, access=0):
     result = {}
 
     try:
@@ -29,6 +27,11 @@ def read_registry_values(path, hive=winreg.HKEY_LOCAL_MACHINE, access=0):
         pass
     return result
 
+try:
+    system_user = os.getlogin()
+except OSError:
+    system_user = os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+
 data_dict = {
     "system" : platform.system(), 
     "system_node" : platform.node(),
@@ -36,7 +39,7 @@ data_dict = {
     "system_version" : platform.version(),
     "system_platform" : platform.platform(),
     "system_machine" : platform.machine(),
-    "system_user" : os.getlogin(),
+    "system_user" : system_user,
     "system_byteorder" : sys.byteorder,
     "CPU" : platform.processor(),
     "CPU_count" : os.cpu_count(),
@@ -44,6 +47,7 @@ data_dict = {
 
 if (data_dict['system'] == 'Linux'):
     cpu = read_text("/proc/cpuinfo")
+
     for line in cpu.splitlines():
         if line.startswith("vendor_id"):
             data_dict.update({"CPU_vendor_id": line.split(":", 1)[1].strip()})
@@ -121,19 +125,24 @@ if (data_dict['system'] == 'Linux'):
     
 
 if data_dict['system'] == 'Windows':
-    data_dict.update({"windows_version" : platform.win32_ver(release='', version='', csd='', ptype='')})
-    data_dict.update({"windows_edition" : platform.win32_edition()})
-    data_dict.update({"windows_is_iot" : platform.win32_is_iot()})
+    import ctypes
+    import winreg
 
-    bios = read_registry_values(r"HARDWARE\DESCRIPTION\System\BIOS")
+    data_dict["windows_version"] = platform.win32_ver(release="", version="", csd="", ptype="")
+    data_dict["windows_edition"] = platform.win32_edition()
+    data_dict["windows_is_iot"] = platform.win32_is_iot()
+
+    bios = read_registry_values(winreg, r"HARDWARE\DESCRIPTION\System\BIOS", winreg.HKEY_LOCAL_MACHINE)
     wanted_bios_fields = (
         "SystemManufacturer",
         "SystemProductName",
         "SystemFamily",
+        "SystemSKUNumber",
         "BIOSVendor",
         "BIOSVersion",
         "BIOSReleaseDate",
     )
+
     data_dict["system_firmware"] = {
         name: bios[name] for name in wanted_bios_fields if name in bios
     }
@@ -207,4 +216,4 @@ if data_dict['system'] == 'Windows':
 
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
-    json.dump(data_dict, write_file)
+    json.dump(data_dict, write_file, indent=2, ensure_ascii=False)

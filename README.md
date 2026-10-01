@@ -1,20 +1,23 @@
-# lab_1 
-A small Python script that collects basic system information about the operating system, hardware, and storage using only the Python standard libraries (such as platform, sys, winreg and alike).
+# Lab 1: System Information Collector
+A small Python script that collects basic information about the operating system, CPU, memory, and storage using only standard Python libraries such as `platform`, `sys`, and `winreg`.
 
-This project is purely self-indulgent and was built as means for author to explore what can be done with Python alone without using third-party packages, shell commands, or external tools.
+This project was created as a learning exercise to explore how system information can be gathered with just Python; without third-party packages, shell commands, or external tools. It is **purely educational** and **self-indulgent**. 
 
 ## Purpose
 
-The script is designed to gather information such as:
-- operating system details
+The script tries to gather some basic information such as:
+- Operating system details
 - CPU information
-- memory information
+- Memory information
+- Storage information
 
 ## Usage
-This project is for educational purposes. Use it responsibly and at your own risk.
 Run the script with:
 ```bash
 python get_os_config.py
+```
+
+Note: This project is intended for educational purposes only. Use it responsibly and only on systems you own or have permission to inspect.
 
 ## Output
-A .json file.
+The collected information is saved as a `ur_data.json` file in the same directory as the script is stored in

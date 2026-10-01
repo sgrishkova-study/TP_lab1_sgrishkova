@@ -4,6 +4,7 @@ import platform
 import sys
 from pathlib import Path
 
+
 def read_text(path):
     try:
         return Path(path).read_text(encoding="utf-8", errors="replace")
@@ -27,25 +28,27 @@ def read_registry_values(winreg, path, hive, access=0):
         pass
     return result
 
-try:
-    system_user = os.getlogin()
-except OSError:
-    system_user = os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+def get_system_user():
+    try:
+        return os.getlogin()
+    except OSError:
+        return os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
 
-data_dict = {
-    "system" : platform.system(), 
-    "system_node" : platform.node(),
-    "system_release" : platform.release(),
-    "system_version" : platform.version(),
-    "system_platform" : platform.platform(),
-    "system_machine" : platform.machine(),
-    "system_user" : system_user,
-    "system_byteorder" : sys.byteorder,
-    "CPU" : platform.processor(),
-    "CPU_count" : os.cpu_count(),
+def get_base_system_data():
+    return {
+        "system": platform.system(),
+        "system_node": platform.node(),
+        "system_release": platform.release(),
+        "system_version": platform.version(),
+        "system_platform": platform.platform(),
+        "system_machine": platform.machine(),
+        "system_user": get_system_user(),
+        "system_byteorder": sys.byteorder,
+        "CPU": platform.processor(),
+        "CPU_count": os.cpu_count(),
     }
 
-if (data_dict['system'] == 'Linux'):
+def get_linux_cpu_data(data_dict):
     cpu = read_text("/proc/cpuinfo")
 
     for line in cpu.splitlines():
@@ -75,6 +78,7 @@ if (data_dict['system'] == 'Linux'):
         elif key == "bugs": data_dict["CPU_bugs"] = value
         elif key == "power management": break
 
+def get_linux_memory_data(data_dict):
     mem = read_text("/proc/meminfo")
     memory = {}
 
@@ -100,6 +104,8 @@ if (data_dict['system'] == 'Linux'):
     
     data_dict["memory"] = memory
 
+def get_linux_network_data(data_dict):
+    
     interfaces = {}
     net_dir = Path("/sys/class/net")
 
@@ -128,11 +134,12 @@ if (data_dict['system'] == 'Linux'):
     except OSError:
         pass
 
+def get_linux_process_data(data_dict):
     processes = {}
     proc_dir = Path("/proc")
     try:
         for entry in proc_dir.iterdir():
-            if not entry.isdigit():
+            if not entry.name.isdigit():
                 continue
             
             proc_id = int(entry.name)
@@ -151,16 +158,8 @@ if (data_dict['system'] == 'Linux'):
         pass
 
     data_dict["processes"] = processes
-    
-    
-if data_dict['system'] == 'Windows':
-    import ctypes
-    import winreg
 
-    data_dict["windows_version"] = platform.win32_ver(release="", version="", csd="", ptype="")
-    data_dict["windows_edition"] = platform.win32_edition()
-    data_dict["windows_is_iot"] = platform.win32_is_iot()
-
+def get_windows_firmware_data(winreg, data_dict):
     bios = read_registry_values(winreg, r"HARDWARE\DESCRIPTION\System\BIOS", winreg.HKEY_LOCAL_MACHINE)
     wanted_bios_fields = (
         "SystemManufacturer",
@@ -172,10 +171,9 @@ if data_dict['system'] == 'Windows':
         "BIOSReleaseDate",
     )
 
-    data_dict["system_firmware"] = {
-        name: bios[name] for name in wanted_bios_fields if name in bios
-    }
+    data_dict["system_firmware"] = {name: bios[name] for name in wanted_bios_fields if name in bios}
 
+def get_windows_memory_data(data_dict, ctypes):
     class MEMORYSTATUSEX(ctypes.Structure):
         _fields_ = [
             ("dwLength", ctypes.c_ulong),
@@ -201,6 +199,7 @@ if data_dict['system'] == 'Windows':
     except (AttributeError, OSError):
         pass
 
+def get_windows_installed_apps(winreg, data_dict):
     results = {}
     uninstall_paths = [
         r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -242,6 +241,28 @@ if data_dict['system'] == 'Windows':
             continue
 
     data_dict["apps"] = results
+
+def get_windows_basic_data(data_dict, winreg, ctypes):
+    data_dict["windows_version"] = platform.win32_ver(release="", version="", csd="", ptype="")
+    data_dict["windows_edition"] = platform.win32_edition()
+    data_dict["windows_is_iot"] = platform.win32_is_iot()
+
+data_dict = get_base_system_data()
+
+if (data_dict['system'] == 'Linux'):
+    get_linux_cpu_data(data_dict)
+    get_linux_memory_data(data_dict)
+    get_linux_network_data(data_dict)
+    get_linux_process_data(data_dict)
+    
+elif data_dict['system'] == 'Windows':
+    import ctypes
+    import winreg
+
+    get_windows_basic_data(data_dict, winreg, ctypes)
+    get_windows_firmware_data(winreg, data_dict)
+    get_windows_memory_data(data_dict, ctypes)
+    get_windows_installed_apps(winreg, data_dict)
 
 
 with open("ur_data.json", mode="w", encoding="utf-8") as write_file:

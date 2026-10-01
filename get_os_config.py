@@ -49,28 +49,31 @@ if (data_dict['system'] == 'Linux'):
     cpu = read_text("/proc/cpuinfo")
 
     for line in cpu.splitlines():
-        if line.startswith("vendor_id"):
-            data_dict.update({"CPU_vendor_id": line.split(":", 1)[1].strip()})
-            continue
-        
-        if line.startswith("model name"):
-            data_dict.update({"CPU_model_name": line.split(":", 1)[1].strip()})
-            continue
+        if ":" not in line: continue
 
-        if line.startswith("cache size"):
-            data_dict.update({"CPU_cache_size_in_bytes": int(line.split(":", 1)[1].strip().split()[0]) * 1024})
-            continue
-        
-        if line.startswith("flags"):
-            data_dict.update({"CPU_flags": line.split(":", 1)[1].strip()})
-            continue
+        key, value = line.split(":", 1)
+        value = value.strip()
 
-        if line.startswith("bugs"):
-            data_dict.update({"CPU_bugs": line.split(":", 1)[1].strip()})
+        if key == "vendor_id": data_dict["CPU_vendor_id"] = value
+        elif key == "model name": 
+            data_dict["CPU_model_name"] = value
             continue
+        elif key == "cache size": 
+            try:
+                cache_value, cache_unit = value.split()
+                if cache_unit.lower() == "kb":
+                    multiplier = 1024
+                elif cache_unit.lower() == "mb":
+                    multiplier = 1024 ** 2
+                else:
+                    multiplier = 1
 
-        if line.startswith("power managment"):
-            break
+                data_dict["CPU_cache_size_in_bytes"] = int(cache_value) * multiplier
+            except ValueError:
+                pass
+        elif key == "flags": data_dict["CPU_flags"] = value
+        elif key == "bugs": data_dict["CPU_bugs"] = value
+        elif key == "power management": break
 
     mem = read_text("/proc/meminfo")
     for line in mem.splitlines():

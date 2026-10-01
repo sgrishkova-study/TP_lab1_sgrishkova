@@ -76,11 +76,29 @@ if (data_dict['system'] == 'Linux'):
         elif key == "power management": break
 
     mem = read_text("/proc/meminfo")
+    memory = {}
+
     for line in mem.splitlines():
         if ":" not in line: continue
+
         key, value = line.split(":", 1)
         fields = value.split()
-        data_dict.update({"memory_" + key + "_in_bytes" : (int(fields[0]) * 1024) })
+        if not fields: continue
+
+        try:
+            number = int(fields[0])
+            unit = fields[1].lower()
+
+            if unit == "kb":
+                number *= 1024
+            elif unit == "mb":
+                number *= 1024 ** 2
+            
+            memory[key.strip() + "_in_bytes"] = number
+        except ValueError:
+            continue
+    
+        data_dict["memory"] = memory
 
     interfaces = {}
     net_dir = Path("/sys/class/net")

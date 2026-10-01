@@ -98,7 +98,7 @@ if (data_dict['system'] == 'Linux'):
         except ValueError:
             continue
     
-        data_dict["memory"] = memory
+    data_dict["memory"] = memory
 
     interfaces = {}
     net_dir = Path("/sys/class/net")
@@ -110,14 +110,20 @@ if (data_dict['system'] == 'Linux'):
 
             for folder in interface_dir.iterdir():
                 if folder.is_dir() and (folder.name == "device"):
-                    for file in folder.iterdir():
-                        if file.is_file():
-                            interfaces[name].update({ name + "_interface_" + folder.name + "_" + file.name : read_text(file)})
-                
-                if folder.is_file():
-                    interfaces[name].update({name + "_interface_" + folder.name : read_text(folder)})
-        
-        data_dict.update({"net_interfaces" : interfaces})
+                    try:
+                        for file in folder.iterdir():
+                            if file.is_file():
+                                interfaces[name].update({ name + "_interface_" + folder.name + "_" + file.name : read_text(file)})
+                    except OSError:
+                        pass
+
+                elif folder.is_file():
+                    try:
+                        interfaces[name].update({name + "_interface_" + folder.name : read_text(folder)})
+                    except OSError:
+                        pass
+
+        data_dict["net_interfaces"] = interfaces
         
     except OSError:
         pass

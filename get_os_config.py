@@ -1,10 +1,12 @@
+import ctypes
+import getpass
 import json
 import os
 import platform
+import subprocess
 import sys
-import winreg
-import ctypes
 from pathlib import Path
+
 
 def read_text(path):
     try:
@@ -12,15 +14,51 @@ def read_text(path):
     except (OSError, ValueError):
         return None
 
-def read_registry_values(path, hive=winreg.HKEY_LOCAL_MACHINE, access=0):
-    result = {}
+
+def run_command(command):
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, ValueError):
+        return None
+
+    output = (completed.stdout or "").strip()
+    return output or None
+
+
+def safe_get_user():
+    for value in (
+        os.environ.get("USER"),
+        os.environ.get("USERNAME"),
+    ):
+        if value:
+            return value
 
     try:
-        with winreg.OpenKey(hive, path, 0, winreg.KEY_READ | access) as key:
+        return getpass.getuser()
+    except Exception:
+        pass
+
+    try:
+        return os.getlogin()
+    except OSError:
+        return "unknown"
+
+
+def read_registry_values(winreg_module, path, hive=None, access=0):
+    result = {}
+    hive_value = hive if hive is not None else winreg_module.HKEY_LOCAL_MACHINE
+
+    try:
+        with winreg_module.OpenKey(hive_value, path, 0, winreg_module.KEY_READ | access) as key:
             index = 0
             while True:
                 try:
-                    name, value, _kind = winreg.EnumValue(key, index)
+                    name, value, _kind = winreg_module.EnumValue(key, index)
                     result[name] = value
                     index += 1
                 except OSError:
@@ -29,71 +67,88 @@ def read_registry_values(path, hive=winreg.HKEY_LOCAL_MACHINE, access=0):
         pass
     return result
 
-data_dict = {
-    "system" : platform.system(), 
-    "system_node" : platform.node(),
-    "system_release" : platform.release(),
-    "system_version" : platform.version(),
-    "system_platform" : platform.platform(),
-    "system_machine" : platform.machine(),
-    "system_user" : os.getlogin(),
-    "system_byteorder" : sys.byteorder,
-    "CPU" : platform.processor(),
-    "CPU_count" : os.cpu_count(),
+
+def collect_base_data():
+    return {
+        "system": platform.system(),
+        "system_node": platform.node(),
+        "system_release": platform.release(),
+        "system_version": platform.version(),
+        "system_platform": platform.platform(),
+        "system_machine": platform.machine(),
+        "system_user": safe_get_user(),
+        "system_byteorder": sys.byteorder,
+        "CPU": platform.processor(),
+        "CPU_count": os.cpu_count(),
     }
 
-if (data_dict['system'] == 'Linux'):
+
+def collect_linux_data(data_dict):
     cpu = read_text("/proc/cpuinfo")
-    for line in cpu.splitlines():
-        if line.startswith("vendor_id"):
-            data_dict.update({"CPU_vendor_id": line.split(":", 1)[1].strip()})
-            continue
-        
-        if line.startswith("model name"):
-            data_dict.update({"CPU_model_name": line.split(":", 1)[1].strip()})
-            continue
+    if cpu:
+        for line in cpu.splitlines():
+            if line.startswith("vendor_id"):
+                data_dict["CPU_vendor_id"] = line.split(":", 1)[1].strip()
+                continue
 
-        if line.startswith("cache size"):
-            data_dict.update({"CPU_cache_size_in_bytes": int(line.split(":", 1)[1].strip().split()[0]) * 1024})
-            continue
-        
-        if line.startswith("flags"):
-            data_dict.update({"CPU_flags": line.split(":", 1)[1].strip()})
-            continue
+            if line.startswith("model name"):
+                data_dict["CPU_model_name"] = line.split(":", 1)[1].strip()
+                continue
 
-        if line.startswith("bugs"):
-            data_dict.update({"CPU_bugs": line.split(":", 1)[1].strip()})
-            continue
+            if line.startswith("cache size"):
+                fields = line.split(":", 1)[1].strip().split()
+                if fields and fields[0].isdigit():
+                    data_dict["CPU_cache_size_in_bytes"] = int(fields[0]) * 1024
+                continue
 
-        if line.startswith("power managment"):
-            break
+            if line.startswith("flags"):
+                data_dict["CPU_flags"] = line.split(":", 1)[1].strip()
+                continue
+
+            if line.startswith("bugs"):
+                data_dict["CPU_bugs"] = line.split(":", 1)[1].strip()
+                continue
+
+            if line.startswith("power management"):
+                break
 
     mem = read_text("/proc/meminfo")
-    for line in mem.splitlines():
-        if ":" not in line: continue
-        key, value = line.split(":", 1)
-        fields = value.split()
-        data_dict.update({"memory_" + key + "_in_bytes" : (int(fields[0]) * 1024) })
+    if mem:
+        for line in mem.splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            fields = value.split()
+            if not fields:
+                continue
+            try:
+                data_dict[f"memory_{key}_in_bytes"] = int(fields[0]) * 1024
+            except ValueError:
+                continue
 
     interfaces = {}
     net_dir = Path("/sys/class/net")
-
     try:
         for interface_dir in sorted(net_dir.iterdir()):
             name = interface_dir.name
-            interfaces[name] = {}
+            interface_info = {}
 
             for folder in interface_dir.iterdir():
-                if folder.is_dir() and (folder.name == "device"):
+                if folder.is_dir() and folder.name == "device":
                     for file in folder.iterdir():
                         if file.is_file():
-                            interfaces[name].update({ name + "_interface_" + folder.name + "_" + file.name : read_text(file)})
-                
+                            value = read_text(file)
+                            if value is not None:
+                                interface_info[f"{name}_interface_{folder.name}_{file.name}"] = value.strip()
+
                 if folder.is_file():
-                    interfaces[name].update({name + "_interface_" + folder.name : read_text(folder)})
-        
-        data_dict.update({"net_interfaces" : interfaces})
-        
+                    value = read_text(folder)
+                    if value is not None:
+                        interface_info[f"{name}_interface_{folder.name}"] = value.strip()
+
+            interfaces[name] = interface_info
+
+        data_dict["net_interfaces"] = interfaces
     except OSError:
         pass
 
@@ -102,30 +157,37 @@ if (data_dict['system'] == 'Linux'):
     try:
         for entry in proc_dir.iterdir():
             if entry.name.isdigit():
-                proc_id = int(entry.name)
+                proc_id = entry.name
                 name = read_text(entry / "comm")
                 if name:
-                    processes[proc_id] = {}
-                    processes[proc_id].update({"proc_name" : name.strip()})
-                
+                    processes[proc_id] = {"proc_name": name.strip()}
+
                     status = read_text(entry / "status")
-                    for line in status.splitlines():
-                        if line.startswith("State"):
-                            processes[proc_id].update({"proc_state" : line.split(":", 1)[1].strip()})
-                            break 
+                    if status:
+                        for line in status.splitlines():
+                            if line.startswith("State"):
+                                processes[proc_id]["proc_state"] = line.split(":", 1)[1].strip()
+                                break
     except OSError:
         pass
 
     data_dict.update(processes)
-    
-    
 
-if data_dict['system'] == 'Windows':
-    data_dict.update({"windows_version" : platform.win32_ver(release='', version='', csd='', ptype='')})
-    data_dict.update({"windows_edition" : platform.win32_edition()})
-    data_dict.update({"windows_is_iot" : platform.win32_is_iot()})
 
-    bios = read_registry_values(r"HARDWARE\DESCRIPTION\System\BIOS")
+def collect_windows_data(data_dict):
+    try:
+        import winreg
+    except ImportError:
+        return
+
+    try:
+        data_dict["windows_version"] = platform.win32_ver(release="", version="", csd="", ptype="")
+        data_dict["windows_edition"] = platform.win32_edition()
+        data_dict["windows_is_iot"] = platform.win32_is_iot()
+    except Exception:
+        pass
+
+    bios = read_registry_values(winreg, r"HARDWARE\DESCRIPTION\System\BIOS")
     wanted_bios_fields = (
         "SystemManufacturer",
         "SystemProductName",
@@ -134,9 +196,7 @@ if data_dict['system'] == 'Windows':
         "BIOSVersion",
         "BIOSReleaseDate",
     )
-    data_dict["system_firmware"] = {
-        name: bios[name] for name in wanted_bios_fields if name in bios
-    }
+    data_dict["system_firmware"] = {name: bios[name] for name in wanted_bios_fields if name in bios}
 
     class MEMORYSTATUSEX(ctypes.Structure):
         _fields_ = [
@@ -195,7 +255,7 @@ if data_dict['system'] == 'Windows':
                                     app[field] = winreg.QueryValueEx(app_key, field)[0]
                                 except OSError:
                                     pass
-                            
+
                             if app.get("DisplayName"):
                                 results[app.get("DisplayName")] = app
                     except OSError:
@@ -206,5 +266,83 @@ if data_dict['system'] == 'Windows':
     data_dict["apps"] = results
 
 
-with open("ur_data.json", mode="w", encoding="utf-8") as write_file:
-    json.dump(data_dict, write_file)
+def collect_macos_data(data_dict):
+    sw_vers = run_command(["sw_vers"])
+    if sw_vers:
+        macos_version = {}
+        for line in sw_vers.splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            macos_version[key.strip()] = value.strip()
+        if macos_version:
+            data_dict["macos_version"] = macos_version
+
+    cpu_brand = run_command(["sysctl", "-n", "machdep.cpu.brand_string"])
+    if cpu_brand:
+        data_dict["CPU_model_name"] = cpu_brand
+
+    cpu_vendor = run_command(["sysctl", "-n", "machdep.cpu.vendor"])
+    if cpu_vendor:
+        data_dict["CPU_vendor_id"] = cpu_vendor
+
+    mem_size = run_command(["sysctl", "-n", "hw.memsize"])
+    if mem_size and mem_size.isdigit():
+        data_dict["memory_MemTotal_in_bytes"] = int(mem_size)
+
+    net_interfaces = {}
+    ifconfig_output = run_command(["ifconfig", "-a"])
+    if ifconfig_output:
+        current = None
+        for line in ifconfig_output.splitlines():
+            if line and not line.startswith(("\t", " ")) and ":" in line:
+                current = line.split(":", 1)[0]
+                net_interfaces[current] = {}
+                continue
+            if current and "inet " in line:
+                net_interfaces[current]["inet"] = line.strip()
+        if net_interfaces:
+            data_dict["net_interfaces"] = net_interfaces
+
+    processes = {}
+    ps_output = run_command(["ps", "-axo", "pid=,comm=,state="])
+    if ps_output:
+        for line in ps_output.splitlines():
+            parts = line.strip().split(None, 2)
+            if len(parts) >= 2:
+                proc_id = parts[0]
+                proc_name = parts[1]
+                proc_state = parts[2] if len(parts) >= 3 else ""
+                processes[proc_id] = {"proc_name": proc_name, "proc_state": proc_state}
+        data_dict["processes"] = processes
+
+
+def collect_os_data():
+    data_dict = collect_base_data()
+    system = data_dict.get("system")
+
+    try:
+        if system == "Linux":
+            collect_linux_data(data_dict)
+        elif system == "Windows":
+            collect_windows_data(data_dict)
+        elif system == "Darwin":
+            collect_macos_data(data_dict)
+    except Exception:
+        pass
+
+    return data_dict
+
+
+def write_os_data(path="ur_data.json"):
+    data_dict = collect_os_data()
+    with open(path, mode="w", encoding="utf-8") as write_file:
+        json.dump(data_dict, write_file)
+
+
+def main():
+    write_os_data()
+
+
+if __name__ == "__main__":
+    main()

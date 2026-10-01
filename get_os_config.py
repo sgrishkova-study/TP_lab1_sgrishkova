@@ -11,6 +11,7 @@ def read_text(path):
     except (OSError, ValueError):
         return ""
 
+
 def read_registry_values(winreg, path, hive, access=0):
     result = {}
 
@@ -28,11 +29,13 @@ def read_registry_values(winreg, path, hive, access=0):
         pass
     return result
 
+
 def get_system_user():
     try:
         return os.getlogin()
     except OSError:
         return os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+
 
 def get_base_system_data():
     return {
@@ -48,64 +51,74 @@ def get_base_system_data():
         "CPU_count": os.cpu_count(),
     }
 
+
 def get_linux_cpu_data(data_dict):
     cpu = read_text("/proc/cpuinfo")
 
     for line in cpu.splitlines():
-        if ":" not in line: continue
+        if ":" not in line:
+            continue
 
         key, value = line.split(":", 1)
         value = value.strip()
 
-        if key == "vendor_id": data_dict["CPU_vendor_id"] = value
-        elif key == "model name": 
+        if key == "vendor_id":
+            data_dict["CPU_vendor_id"] = value
+        elif key == "model name":
             data_dict["CPU_model_name"] = value
             continue
-        elif key == "cache size": 
+        elif key == "cache size":
             try:
                 cache_value, cache_unit = value.split()
                 if cache_unit.lower() == "kb":
                     multiplier = 1024
                 elif cache_unit.lower() == "mb":
-                    multiplier = 1024 ** 2
+                    multiplier = 1024**2
                 else:
                     multiplier = 1
 
                 data_dict["CPU_cache_size_in_bytes"] = int(cache_value) * multiplier
             except ValueError:
                 pass
-        elif key == "flags": data_dict["CPU_flags"] = value
-        elif key == "bugs": data_dict["CPU_bugs"] = value
-        elif key == "power management": break
+        elif key == "flags":
+            data_dict["CPU_flags"] = value
+        elif key == "bugs":
+            data_dict["CPU_bugs"] = value
+        elif key == "power management":
+            break
+
 
 def get_linux_memory_data(data_dict):
     mem = read_text("/proc/meminfo")
-    memory = {}
+    if mem: 
+        memory = {}
 
-    for line in mem.splitlines():
-        if ":" not in line: continue
+        for line in mem.splitlines():
+            if ":" not in line:
+                continue
 
-        key, value = line.split(":", 1)
-        fields = value.split()
-        if not fields: continue
+            key, value = line.split(":", 1)
+            fields = value.split()
 
-        try:
-            number = int(fields[0])
-            unit = fields[1].lower()
+            if fields and fields[0].isdigit():
+                try:
+                    number = int(fields[0])
+                    unit = fields[0].lower()
 
-            if unit == "kb":
-                number *= 1024
-            elif unit == "mb":
-                number *= 1024 ** 2
-            
-            memory[key.strip() + "_in_bytes"] = number
-        except ValueError:
-            continue
-    
+                    if unit == "kb":
+                        number *= 1024
+                    elif unit == "mb":
+                        number *= 1024**2
+
+                    memory[key.strip() + "_in_bytes"] = number
+                except ValueError:
+                    continue
+
     data_dict["memory"] = memory
 
+
 def get_linux_network_data(data_dict):
-    
+
     interfaces = {}
     net_dir = Path("/sys/class/net")
 
@@ -119,20 +132,31 @@ def get_linux_network_data(data_dict):
                     try:
                         for file in folder.iterdir():
                             if file.is_file():
-                                interfaces[name].update({ name + "_interface_" + folder.name + "_" + file.name : read_text(file)})
+                                interfaces[name].update(
+                                    {
+                                        name
+                                        + "_interface_"
+                                        + folder.name
+                                        + "_"
+                                        + file.name: read_text(file)
+                                    }
+                                )
                     except OSError:
                         pass
 
                 elif folder.is_file():
                     try:
-                        interfaces[name].update({name + "_interface_" + folder.name : read_text(folder)})
+                        interfaces[name].update(
+                            {name + "_interface_" + folder.name: read_text(folder)}
+                        )
                     except OSError:
                         pass
 
         data_dict["net_interfaces"] = interfaces
-        
+
     except OSError:
         pass
+
 
 def get_linux_process_data(data_dict):
     processes = {}
@@ -141,26 +165,32 @@ def get_linux_process_data(data_dict):
         for entry in proc_dir.iterdir():
             if not entry.name.isdigit():
                 continue
-            
+
             proc_id = int(entry.name)
             name = read_text(entry / "comm")
 
-            if not name: continue
+            if not name:
+                continue
 
-            processes[proc_id] = { "proc_name" : name.strip() }
+            processes[proc_id] = {"proc_name": name.strip()}
             status = read_text(entry / "status")
             for line in status.splitlines():
-                    if line.startswith("State") and ":" in line:
-                        processes[proc_id].update({"proc_state" : line.split(":", 1)[1].strip()})
-                        break 
-               
+                if line.startswith("State") and ":" in line:
+                    processes[proc_id].update(
+                        {"proc_state": line.split(":", 1)[1].strip()}
+                    )
+                    break
+
     except OSError:
         pass
 
     data_dict["processes"] = processes
 
+
 def get_windows_firmware_data(winreg, data_dict):
-    bios = read_registry_values(winreg, r"HARDWARE\DESCRIPTION\System\BIOS", winreg.HKEY_LOCAL_MACHINE)
+    bios = read_registry_values(
+        winreg, r"HARDWARE\DESCRIPTION\System\BIOS", winreg.HKEY_LOCAL_MACHINE
+    )
     wanted_bios_fields = (
         "SystemManufacturer",
         "SystemProductName",
@@ -171,7 +201,10 @@ def get_windows_firmware_data(winreg, data_dict):
         "BIOSReleaseDate",
     )
 
-    data_dict["system_firmware"] = {name: bios[name] for name in wanted_bios_fields if name in bios}
+    data_dict["system_firmware"] = {
+        name: bios[name] for name in wanted_bios_fields if name in bios
+    }
+
 
 def get_windows_memory_data(data_dict, ctypes):
     class MEMORYSTATUSEX(ctypes.Structure):
@@ -198,6 +231,7 @@ def get_windows_memory_data(data_dict, ctypes):
             }
     except (AttributeError, OSError):
         pass
+
 
 def get_windows_installed_apps(winreg, data_dict):
     results = {}
@@ -232,7 +266,7 @@ def get_windows_installed_apps(winreg, data_dict):
                                     app[field] = winreg.QueryValueEx(app_key, field)[0]
                                 except OSError:
                                     pass
-                            
+
                             if app.get("DisplayName"):
                                 results[app.get("DisplayName")] = app
                     except OSError:
@@ -242,20 +276,24 @@ def get_windows_installed_apps(winreg, data_dict):
 
     data_dict["apps"] = results
 
+
 def get_windows_basic_data(data_dict, winreg, ctypes):
-    data_dict["windows_version"] = platform.win32_ver(release="", version="", csd="", ptype="")
+    data_dict["windows_version"] = platform.win32_ver(
+        release="", version="", csd="", ptype=""
+    )
     data_dict["windows_edition"] = platform.win32_edition()
     data_dict["windows_is_iot"] = platform.win32_is_iot()
 
+
 data_dict = get_base_system_data()
 
-if (data_dict['system'] == 'Linux'):
+if data_dict["system"] == "Linux":
     get_linux_cpu_data(data_dict)
     get_linux_memory_data(data_dict)
     get_linux_network_data(data_dict)
     get_linux_process_data(data_dict)
-    
-elif data_dict['system'] == 'Windows':
+
+elif data_dict["system"] == "Windows":
     import ctypes
     import winreg
 

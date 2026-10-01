@@ -132,25 +132,27 @@ if (data_dict['system'] == 'Linux'):
     proc_dir = Path("/proc")
     try:
         for entry in proc_dir.iterdir():
-            if entry.name.isdigit():
-                proc_id = int(entry.name)
-                name = read_text(entry / "comm")
-                if name:
-                    processes[proc_id] = {}
-                    processes[proc_id].update({"proc_name" : name.strip()})
-                
-                    status = read_text(entry / "status")
-                    for line in status.splitlines():
-                        if line.startswith("State"):
-                            processes[proc_id].update({"proc_state" : line.split(":", 1)[1].strip()})
-                            break 
+            if not entry.isdigit():
+                continue
+            
+            proc_id = int(entry.name)
+            name = read_text(entry / "comm")
+
+            if not name: continue
+
+            processes[proc_id] = { "proc_name" : name.strip() }
+            status = read_text(entry / "status")
+            for line in status.splitlines():
+                    if line.startswith("State") and ":" in line:
+                        processes[proc_id].update({"proc_state" : line.split(":", 1)[1].strip()})
+                        break 
+               
     except OSError:
         pass
 
-    data_dict.update(processes)
+    data_dict["processes"] = processes
     
     
-
 if data_dict['system'] == 'Windows':
     import ctypes
     import winreg
